@@ -82,8 +82,7 @@ export function dayCycle(seconds) {
           ? 18 + ((time - DAY_END) * 3) / (NIGHT_START - DAY_END)
           : 21 + ((time - NIGHT_START) * 10) / (DAY_LENGTH - NIGHT_START);
   const minutes = Math.floor(hour * 60 + 0.000001),
-    h = Math.floor(minutes / 60) % 24,
-    m = minutes % 60;
+    h = Math.floor(minutes / 60) % 24;
   return {
     time,
     day,
@@ -101,6 +100,6 @@ export function dayCycle(seconds) {
         : time < DAY_END
           ? 'Daylight'
           : 'Evening glow',
-    clock: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+    clock: `${h % 12 || 12}${h < 12 ? 'AM' : 'PM'}`,
   };
 }
