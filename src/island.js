@@ -33,6 +33,25 @@ export const land = (x, z) => shoreDistance(x, z) > 0;
 export const walkable = (x, z) =>
   ground(x, z) >= WATER_LEVEL - MAX_WADING_DEPTH;
 export const waterDepth = (x, z) => Math.max(0, WATER_LEVEL - ground(x, z));
+export function biomeColor(x, z) {
+  const beachWidth =
+      10 + 3 * Math.sin(x * 0.07 + z * 0.04) + 2 * Math.cos(z * 0.11),
+    dunes = 72 + 8 * Math.sin(x * 0.052) + 4 * Math.cos(x * 0.13),
+    snowline = -59 + 10 * Math.sin(x * 0.045 + 0.8) + 5 * Math.sin(x * 0.11),
+    sand = Math.max(
+      1 - smooth(beachWidth - 5, beachWidth + 4, shoreDistance(x, z)),
+      smooth(dunes - 7, dunes + 9, z),
+    ),
+    snow = (1 - smooth(snowline - 10, snowline + 7, z)) * (1 - sand),
+    grass = 1 - sand - snow;
+  // The same palette and curved transitions are used by the terrain and maps.
+  const blend = (g, s, n) => Math.round(g * grass + s * sand + n * snow);
+  return (
+    (blend(136, 211, 227) << 16) |
+    (blend(164, 195, 236) << 8) |
+    blend(119, 155, 230)
+  );
+}
 export function coastOutline(inset = 0, count = 192) {
   return Array.from({ length: count }, (_, i) => {
     const a = (i / count) * Math.PI * 2,

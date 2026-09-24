@@ -7,6 +7,7 @@ import {
   COAST_RADII,
   dayCycle,
   NIGHT_START,
+  biomeColor,
 } from './island.js';
 import { waterVertex, waterFragment } from './water.js';
 export { ground, land } from './island.js';
@@ -224,8 +225,12 @@ export class World {
     this.marker.visible = false;
     this.pointer = mesh(
       this.scene,
-      new THREE.ConeGeometry(0.35, 0.65, 4),
-      new THREE.MeshBasicMaterial({ color: 0xffe4a1 }),
+      new THREE.ConeGeometry(0.48, 0.9, 4),
+      new THREE.MeshBasicMaterial({
+        color: 0xffed79,
+        toneMapped: false,
+        fog: false,
+      }),
       0,
       0,
       0,
@@ -274,15 +279,7 @@ export class World {
       const x = p.getX(i),
         z = p.getZ(i);
       p.setY(i, ground(x, z));
-      const c = new THREE.Color(
-        z < -48 ? 0xaec2b0 : z > 65 ? 0xb5b687 : 0x88a477,
-      );
-      if (z < -68)
-        c.lerp(new THREE.Color(0xe0e5d8), Math.min(1, (-z - 68) / 25));
-      c.lerp(
-        new THREE.Color(0xd3c39b),
-        1 - THREE.MathUtils.smoothstep(shoreDistance(x, z), 3, 14),
-      );
+      const c = new THREE.Color(biomeColor(x, z));
       c.multiplyScalar(0.96 + rand() * 0.08);
       colors.push(c.r, c.g, c.b);
     }
@@ -1254,7 +1251,7 @@ export class World {
     if (n) {
       this.pointer.position.set(
         n.x,
-        ground(n.x, n.z) + 3.65 + Math.sin(t * 3) * 0.15,
+        ground(n.x, n.z) + 3.85 + Math.sin(t * 3) * 0.15,
         n.z,
       );
       this.pointer.rotation.y = t;

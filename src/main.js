@@ -1,6 +1,6 @@
 import './style.css';
 import { World, ground } from './world.js';
-import { walkable, coastOutline } from './island.js';
+import { walkable, shoreDistance, biomeColor } from './island.js';
 import {
   ITEMS,
   NPCS,
@@ -107,17 +107,20 @@ function closeModal() {
   afterTrade = null;
   if (next) next();
 }
-function modal(html, wide = false) {
+function modal(html, wide = false, dismissible = true) {
   clearInterval(typingTimer);
   fishGame = null;
   keys.clear();
   world.destination = null;
   lastFocus = document.activeElement;
   $('#dialog').className = wide ? 'wide' : '';
+  $('#dialog').dataset.dismissible = String(dismissible);
   $('#dialog-content').innerHTML =
-    `<button class="close" aria-label="Close window" id="close-dialog">×</button>${html}`;
+    (dismissible
+      ? '<button class="close" aria-label="Close window" id="close-dialog">×</button>'
+      : '') + html;
   if (!$('#dialog').open) $('#dialog').showModal();
-  $('#close-dialog').onclick = closeModal;
+  if (dismissible) $('#close-dialog').onclick = closeModal;
 }
 function button(label, fn, cls = 'secondary') {
   const b = document.createElement('button');
@@ -129,7 +132,23 @@ function button(label, fn, cls = 'secondary') {
 function actionRow(actions) {
   const row = document.createElement('div');
   row.className = 'dialog-actions';
-  actions.forEach((a) => row.append(button(...a)));
+  const offset = document.querySelectorAll(
+    '#dialog-content .dialog-actions button',
+  ).length;
+  actions.forEach((a, i) => {
+    const b = button(...a),
+      number = offset + i + 1;
+    if (number <= 10) {
+      const shortcut = String(number % 10),
+        badge = document.createElement('kbd');
+      badge.textContent = shortcut;
+      badge.setAttribute('aria-hidden', 'true');
+      b.dataset.dialogKey = shortcut;
+      b.setAttribute('aria-keyshortcuts', shortcut);
+      b.prepend(badge);
+    }
+    row.append(b);
+  });
   $('#dialog-content').append(row);
 }
 function typeText(element, text) {
@@ -405,8 +424,10 @@ function interact() {
     changed();
     modal(
       `<div class="eyebrow">THE KEEPER’S POSTCARDS · ${state.notes.length} / 12</div><h2>A note, left for someone</h2><p class="postcard">${e.text}</p>${state.notes.length === 12 ? '<p>You found every postcard. Orin’s story is yours now. You are the island’s Memory Keeper.</p>' : ''}`,
+      false,
+      false,
     );
-    actionRow([['Keep this little story', closeModal, 'primary']]);
+    actionRow([['Keep this story', closeModal, 'primary']]);
   } else if (e.type === 'chime') {
     sound.tone(e.note, 2, 0.15);
     if (state.step !== 18) {
@@ -629,10 +650,6 @@ function mapView() {
     z: world.npcPosition(n.id).z,
     role: world.cycle.night ? 'Sleeping until morning' : n.role,
   }));
-  const outline = (inset) =>
-    coastOutline(inset)
-      .map((p) => `${p.x + 125},${p.z + 112}`)
-      .join(' ');
   const x = (v) => v + 125,
     z = (v) => v + 112,
     t = currentTrade();
@@ -643,7 +660,7 @@ function mapView() {
     )
     .join('');
   $('#large-map').innerHTML =
-    `<svg class="island-map" viewBox="-15 -15 280 255" role="img" aria-label="Map of Northlight Isle. You are shown in red. The next trade is gold."><rect x="-15" y="-15" width="280" height="255" fill="#86b5b4"/><polygon points="${outline(0)}" fill="#d3c7a5"/><polygon points="${outline(9)}" fill="#9fae86"/>${paths}${DISTRICTS.map((d) => `<text x="${x(d.x)}" y="${z(d.z) - 10}" text-anchor="middle" class="map-region">${d.short.toUpperCase()}</text>`).join('')}${NOTES.filter(
+    `<svg class="island-map" viewBox="-15 -15 280 255" role="img" aria-label="Map of Northlight Isle. You are shown in red. The next trade is gold."><rect x="-15" y="-15" width="280" height="255" fill="#86b5b4"/><image href="${mapTerrain().toDataURL()}" x="-15" y="-15" width="280" height="255"/>${paths}${DISTRICTS.map((d) => `<text x="${x(d.x)}" y="${z(d.z) - 10}" text-anchor="middle" class="map-region">${d.short.toUpperCase()}</text>`).join('')}${NOTES.filter(
       (n) => !state.notes.includes(n.id),
     )
       .map((n) => `<text x="${x(n.x)}" y="${z(n.z)}" class="map-note">✉</text>`)
@@ -831,7 +848,7 @@ $('#next-shot').onclick = () => {
 };
 $('#dialog').addEventListener('cancel', (e) => {
   e.preventDefault();
-  closeModal();
+  if ($('#dialog').dataset.dismissible !== 'false') closeModal();
 });
 $('#world').addEventListener('pointerdown', (e) => {
   if (started && !scene && !$('#dialog').open)
@@ -851,6 +868,23 @@ addEventListener('keydown', (e) => {
     return;
   }
   if ($('#dialog').open) {
+    if (
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !e.shiftKey &&
+      !e.target.closest?.(
+        'input, textarea, select, [contenteditable="true"]',
+      ) &&
+      /^[0-9]$/.test(key)
+    ) {
+      const choice = $(`#dialog-content button[data-dialog-key="${key}"]`);
+      if (choice && !choice.disabled) {
+        e.preventDefault();
+        choice.click();
+      }
+      return;
+    }
     if (fishGame && (key === 'e' || key === ' ')) {
       reel();
       e.preventDefault();
@@ -898,26 +932,40 @@ for (const b of document.querySelectorAll('[data-key]')) {
   };
   b.onpointerup = b.onpointercancel = () => keys.delete(b.dataset.key);
 }
+let terrainMap;
+function mapTerrain() {
+  if (terrainMap) return terrainMap;
+  terrainMap = document.createElement('canvas');
+  terrainMap.width = 560;
+  terrainMap.height = 510;
+  const ctx = terrainMap.getContext('2d'),
+    pixels = ctx.createImageData(560, 510);
+  for (let py = 0; py < 510; py++) {
+    for (let px = 0; px < 560; px++) {
+      const x = (px + 0.5) / 2 - 140,
+        z = (py + 0.5) / 2 - 127,
+        distance = shoreDistance(x, z);
+      if (distance < -0.5) continue;
+      const color = biomeColor(x, z),
+        i = (py * 560 + px) * 4;
+      pixels.data[i] = (color >> 16) & 255;
+      pixels.data[i + 1] = (color >> 8) & 255;
+      pixels.data[i + 2] = color & 255;
+      pixels.data[i + 3] = Math.round(
+        Math.max(0, Math.min(1, distance + 0.5)) * 255,
+      );
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+  return terrainMap;
+}
 function minimap() {
   const c = $('#minimap'),
     ctx = c.getContext('2d'),
     w = c.width,
     h = c.height;
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#d9cbab';
-  ctx.beginPath();
-  coastOutline(0).forEach((p, i) =>
-    ctx[i ? 'lineTo' : 'moveTo'](w / 2 + p.x * 0.5, h / 2 + p.z * 0.5),
-  );
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#a5b28c';
-  ctx.beginPath();
-  coastOutline(9).forEach((p, i) =>
-    ctx[i ? 'lineTo' : 'moveTo'](w / 2 + p.x * 0.5, h / 2 + p.z * 0.5),
-  );
-  ctx.closePath();
-  ctx.fill();
+  ctx.drawImage(mapTerrain(), w / 2 - 70, h / 2 - 63.5, 140, 127.5);
   const pos = (x, z) => [w / 2 + x * 0.5, h / 2 + z * 0.5];
   ctx.strokeStyle = '#d4c7a0';
   ctx.lineWidth = 2;

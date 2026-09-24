@@ -827,6 +827,12 @@ p {
 .dialog-actions .primary {
   flex-grow: 1;
 }
+.dialog-actions kbd {
+  margin-right: 9px;
+  color: inherit;
+  background: #ffffff18;
+  border-color: currentColor;
+}
 .chime-status {
   font-size: 12px;
   color: #888164;
