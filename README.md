@@ -1,6 +1,6 @@
 # NarNar
 
-A little trade. A place to call home.
+A little journey to a place to call home.
 
 **[Play NarNar](https://ernestasromeika.github.io/narnar/)**
 
