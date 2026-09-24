@@ -115,28 +115,27 @@ body:not(.playing) .hud,
   transform: translateX(-50%);
   text-align: center;
   min-width: 215px;
-  background: #f3eddfdf;
-  border: 1px solid #fff5;
-  border-radius: 6px;
-  padding: 11px 22px;
-  backdrop-filter: blur(14px);
-  box-shadow: 0 4px 22px #26454012;
+  padding: 4px 12px;
+  color: #294c50;
+  text-shadow: 0 1px 4px #fff9;
   font-size: 14px;
+  transition:
+    color 1.5s,
+    text-shadow 1.5s;
 }
-.location-dot {
-  height: 5px;
-  width: 5px;
-  border-radius: 50%;
-  background: #b69862;
-  display: inline-block;
-  vertical-align: middle;
-  margin: 0 0 5px;
+.location.after-dark {
+  color: #f1e8d5;
+  text-shadow: 0 1px 5px #142b3fe6;
 }
 .location small {
   display: block;
-  color: #78816f;
+  color: #425b5b;
   font-size: 11px;
-  margin-top: 5px;
+  margin-top: 4px;
+  transition: color 1.5s;
+}
+.location.after-dark small {
+  color: #cec9b7;
 }
 .tools {
   display: flex;
@@ -1894,10 +1893,8 @@ p {
     top: 43px;
     min-width: 0;
     padding: 5px 12px;
-    background: #f3eddfdb;
   }
-  .location #region,
-  .location-dot {
+  .location #region {
     display: none;
   }
   .location small {

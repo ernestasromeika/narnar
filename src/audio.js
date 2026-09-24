@@ -5,6 +5,7 @@ export class Soundscape {
     this.nextMusic = 0;
     this.noteIndex = 0;
     this.lastStep = 0;
+    this.waterStep = -1;
     this.lastVoice = 0;
   }
   async start() {
@@ -42,9 +43,20 @@ export class Soundscape {
         this.ctx.sampleRate,
       );
       const splash = this.splashBuffer.getChannelData(0);
-      for (let i = 0; i < splash.length; i++)
-        splash[i] =
-          (Math.random() * 2 - 1) * (0.65 + 0.35 * Math.sin(i * 0.016));
+      for (let i = 0; i < splash.length; i++) splash[i] = Math.random() * 2 - 1;
+      // Load once after the audio gesture; quiet noise covers the brief download.
+      this.waterReady = fetch(
+        new URL('./assets/water-steps.wav', import.meta.url),
+      )
+        .then((response) => {
+          if (!response.ok) throw new Error('Water audio unavailable');
+          return response.arrayBuffer();
+        })
+        .then((bytes) => this.ctx.decodeAudioData(bytes))
+        .then((buffer) => {
+          this.waterBuffer = buffer;
+        })
+        .catch(() => {});
       this.nextMusic = this.ctx.currentTime + 0.5;
     }
     await this.ctx.resume();
@@ -108,18 +120,28 @@ export class Soundscape {
         source = this.ctx.createBufferSource(),
         filter = this.ctx.createBiquadFilter(),
         gain = this.ctx.createGain();
-      source.buffer = this.splashBuffer;
-      filter.type = 'bandpass';
-      filter.Q.value = 0.6;
-      filter.frequency.setValueAtTime(1400 + Math.random() * 400, now);
-      filter.frequency.exponentialRampToValueAtTime(420, now + 0.28);
+      const recorded = !!this.waterBuffer,
+        rate = 0.96 + Math.random() * 0.08,
+        duration = recorded ? 0.48 / rate : 0.3;
+      source.buffer = this.waterBuffer || this.splashBuffer;
+      source.playbackRate.value = recorded ? rate : 1;
+      filter.type = 'lowpass';
+      filter.Q.value = 0.5;
+      filter.frequency.value = recorded ? 5500 : 1100;
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.085, now + 0.018);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+      gain.gain.linearRampToValueAtTime(recorded ? 0.22 : 0.045, now + 0.012);
+      gain.gain.setValueAtTime(recorded ? 0.22 : 0.045, now + duration * 0.65);
+      gain.gain.linearRampToValueAtTime(0, now + duration);
       source.connect(filter).connect(gain).connect(this.master);
-      source.start(now);
-      source.stop(now + 0.32);
-      this.tone(450 + Math.random() * 170, 0.13, 0.012);
+      // Four different splashes, never the same one twice in a row.
+      this.waterStep = (this.waterStep + 1 + Math.floor(Math.random() * 3)) % 4;
+      source.start(now, recorded ? this.waterStep * 0.5 : 0);
+      source.stop(now + duration);
+      source.onended = () => {
+        source.disconnect();
+        filter.disconnect();
+        gain.disconnect();
+      };
       return;
     }
     this.tone(100 + Math.random() * 30, 0.055, 0.025, 'triangle');

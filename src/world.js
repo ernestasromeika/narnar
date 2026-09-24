@@ -6,6 +6,7 @@ import {
   shoreDistance,
   COAST_RADII,
   dayCycle,
+  NIGHT_START,
 } from './island.js';
 import { waterVertex, waterFragment } from './water.js';
 export { ground, land } from './island.js';
@@ -935,7 +936,11 @@ export class World {
       const progress = c.night
         ? 1
         : c.goingHome
-          ? THREE.MathUtils.clamp((c.time - (540 - travel)) / travel, 0, 1)
+          ? THREE.MathUtils.clamp(
+              (c.time - (NIGHT_START - travel)) / travel,
+              0,
+              1,
+            )
           : c.waking
             ? 1 - THREE.MathUtils.clamp(c.time / Math.min(20, travel), 0, 1)
             : 0;

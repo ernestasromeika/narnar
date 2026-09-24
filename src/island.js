@@ -41,18 +41,21 @@ export function coastOutline(inset = 0, count = 192) {
   });
 }
 
-export const DAY_LENGTH = 720;
+export const MORNING_END = 60;
+export const DAY_END = 240;
+export const NIGHT_START = 360;
+export const DAY_LENGTH = 450;
 export function dayCycle(seconds) {
   const time = ((seconds % DAY_LENGTH) + DAY_LENGTH) % DAY_LENGTH,
     day = Math.floor(seconds / DAY_LENGTH) + 1;
   const anchors = [
     [0, 0.65],
-    [120, 1],
-    [420, 0.85],
-    [510, 0.12],
-    [550, 0],
-    [675, 0],
-    [720, 0.65],
+    [MORNING_END, 1],
+    [DAY_END, 0.85],
+    [NIGHT_START - 30, 0.12],
+    [NIGHT_START + 10, 0],
+    [DAY_LENGTH - 22.5, 0],
+    [DAY_LENGTH, 0.65],
   ];
   const i = anchors.findIndex(
     (a, j) =>
@@ -60,24 +63,24 @@ export function dayCycle(seconds) {
   );
   const [a, b] = [anchors[i], anchors[i + 1]],
     light = a[1] + (b[1] - a[1]) * smooth(a[0], b[0], time);
-  const night = time >= 540,
-    goingHome = time >= 500 && time < 540,
+  const night = time >= NIGHT_START,
+    goingHome = time >= NIGHT_START - 40 && time < NIGHT_START,
     waking = day > 1 && time < 20;
   const commute = night
     ? 1
     : goingHome
-      ? smooth(500, 540, time)
+      ? smooth(NIGHT_START - 40, NIGHT_START, time)
       : waking
         ? 1 - smooth(0, 20, time)
         : 0;
   const hour =
-    time < 120
-      ? 7 + time / 40
-      : time < 420
-        ? 10 + ((time - 120) * 8) / 300
-        : time < 540
-          ? 18 + (time - 420) / 40
-          : 21 + (time - 540) / 18;
+    time < MORNING_END
+      ? 7 + (time * 3) / MORNING_END
+      : time < DAY_END
+        ? 10 + ((time - MORNING_END) * 8) / (DAY_END - MORNING_END)
+        : time < NIGHT_START
+          ? 18 + ((time - DAY_END) * 3) / (NIGHT_START - DAY_END)
+          : 21 + ((time - NIGHT_START) * 10) / (DAY_LENGTH - NIGHT_START);
   const minutes = Math.floor(hour * 60 + 0.000001),
     h = Math.floor(minutes / 60) % 24,
     m = minutes % 60;
@@ -93,9 +96,9 @@ export function dayCycle(seconds) {
     available: !night && !goingHome && !waking,
     label: night
       ? 'Moonlit night'
-      : time < 120
+      : time < MORNING_END
         ? 'Morning light'
-        : time < 420
+        : time < DAY_END
           ? 'Daylight'
           : 'Evening glow',
     clock: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,

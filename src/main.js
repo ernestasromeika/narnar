@@ -63,7 +63,7 @@ const portrait = (color = '#d1614e') =>
   `<svg viewBox="0 0 90 90" aria-hidden="true"><circle cx="45" cy="45" r="44" fill="${color}" opacity=".2"/><ellipse cx="45" cy="55" rx="25" ry="34" fill="#2e4248"/><ellipse cx="45" cy="62" rx="18" ry="22" fill="#f6efdd"/><ellipse cx="35" cy="38" rx="10" ry="13" fill="#f6efdd"/><ellipse cx="55" cy="38" rx="10" ry="13" fill="#f6efdd"/><circle cx="36" cy="38" r="3" fill="#23393e"/><circle cx="54" cy="38" r="3" fill="#23393e"/><path d="m39 45 12 0-6 8z" fill="#e2a058"/><path d="M22 58q23 9 46 0" stroke="${color}" stroke-width="8" fill="none"/><path d="m59 60 1 18" stroke="${color}" stroke-width="8"/></svg>`;
 $('#app').innerHTML = `
 <canvas id="world" aria-label="NarNar island. Move with W A S D or arrow keys. Press E near a neighbour or object."></canvas><div class="vignette"></div>
-<header class="hud" id="top-hud"><div class="brand">NarNar<span>✦</span><small>A LITTLE JOURNEY TO A PLACE TO CALL HOME.</small></div><div class="location"><span class="location-dot"></span><div id="region">Littlewake Harbour</div><small id="time-of-day">A good day to begin</small></div><nav class="tools"><button id="journal-btn" title="Journal (J)">▤<span>Journal</span><kbd>J</kbd></button><button id="map-btn" title="Island map (M)">⌖<span>Map</span><kbd>M</kbd></button><button id="sound-btn" aria-label="Toggle sound">♫</button><button id="settings-btn" aria-label="Pause and settings">☷</button></nav></header>
+<header class="hud" id="top-hud"><div class="brand">NarNar<span>✦</span><small>A LITTLE JOURNEY TO A PLACE TO CALL HOME.</small></div><div class="location"><div id="region">Littlewake Harbour</div><small id="time-of-day">A good day to begin</small></div><nav class="tools"><button id="journal-btn" title="Journal (J)">▤<span>Journal</span><kbd>J</kbd></button><button id="map-btn" title="Island map (M)">⌖<span>Map</span><kbd>M</kbd></button><button id="sound-btn" aria-label="Toggle sound">♫</button><button id="settings-btn" aria-label="Pause and settings">☷</button></nav></header>
 <aside id="quest" class="quest hud"><div class="eyebrow" id="chapter-label"></div><h2 id="quest-title"></h2><p id="quest-detail"></p><button id="hint-btn" class="text-button">A little nudge ↗</button><div class="quest-progress"><i id="quest-progress"></i></div></aside>
 <button class="compass hud" id="compass" title="Open map"><span id="direction">➤</span><div id="destination-label"></div></button>
 <div id="nearby" class="nearby hidden"><span id="nearby-label"></span><button id="interact-btn"><kbd>E</kbd><span>Talk</span></button></div>
@@ -257,7 +257,7 @@ function hint() {
     tracked = NPCS.find((n) => n.id === t.npc);
     text = world.cycle.available
       ? `${tracked.name} is waiting. Follow the compass, or open your map. Keep every required item in your pockets.`
-      : `${tracked.name} will trade again in the morning. Night lasts three minutes; you can still gather, fish, play chimes, and find postcards.`;
+      : `${tracked.name} will trade again in the morning. Night lasts ninety seconds; you can still gather, fish, play chimes, and find postcards.`;
   }
   toast(text);
 }
@@ -964,6 +964,7 @@ function updateHud() {
     $('#region').textContent = region.name;
   }
   const cycle = world.cycle;
+  $('.location').classList.toggle('after-dark', cycle.light < 0.4);
   $('#time-of-day').textContent = `${cycle.label} · ${cycle.clock}`;
   if (lastAvailability !== cycle.available) {
     lastAvailability = cycle.available;
