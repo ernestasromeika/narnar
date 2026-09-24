@@ -1,3 +1,14 @@
+import {
+  ground,
+  land,
+  walkable,
+  waterDepth,
+  shoreDistance,
+  COAST_RADII,
+  dayCycle,
+} from './island.js';
+import { waterVertex, waterFragment } from './water.js';
+export { ground, land } from './island.js';
 import * as THREE from 'three';
 import {
   NPCS,
@@ -15,21 +26,6 @@ const rand = () => {
   seed = (seed * 16807) % 2147483647;
   return (seed - 1) / 2147483646;
 };
-export function ground(x, z) {
-  return (
-    1.5 +
-    Math.sin(x * 0.045) * 0.5 +
-    Math.cos(z * 0.047) * 0.5 +
-    Math.max(0, -z - 28) * 0.035
-  );
-}
-export function land(x, z) {
-  const a = Math.atan2(z / 103, x / 113);
-  return (
-    Math.hypot(x / 113, z / 103) <
-    1 + 0.025 * Math.sin(a * 7) + 0.018 * Math.cos(a * 11)
-  );
-}
 const matCache = new Map();
 function material(color, roughness = 0.85) {
   const key = color + ':' + roughness;
@@ -116,6 +112,10 @@ export class World {
   constructor(canvas, state, onError) {
     this.state = state;
     this.colliders = [];
+    this.houses = [];
+    this.cycle = dayCycle(state.playtime);
+    this.lastRipple = -1;
+    this.rippleIndex = 0;
     this.entities = [];
     this.npcMeshes = new Map();
     this.pickups = new Map();
@@ -143,7 +143,9 @@ export class World {
     this.camera = new THREE.OrthographicCamera(-30, 30, 25, -25, 0.1, 420);
     this.focus = new THREE.Vector3(state.x, ground(state.x, state.z), state.z);
     this.zoom = 24;
-    this.scene.add(new THREE.HemisphereLight(0xd7effa, 0x878052, 2.3));
+    this.ambient = new THREE.HemisphereLight(0xd7effa, 0x878052, 2.3);
+    this.moon = new THREE.DirectionalLight(0x94b9ee, 0);
+    this.scene.add(this.ambient, this.moon, this.moon.target);
     this.sun = new THREE.DirectionalLight(0xffe6b7, 3.4);
     this.sun.position.set(-45, 80, 35);
     this.sun.castShadow = true;
@@ -164,6 +166,7 @@ export class World {
     this.buildNature();
     this.buildPeople();
     this.buildObjects();
+    this.buildNightLife();
     this.player = penguin();
     this.player.scale.setScalar(1.13);
     this.player.position.set(state.x, ground(state.x, state.z), state.z);
@@ -234,34 +237,35 @@ export class World {
   }
   buildTerrain() {
     this.waterMaterial = new THREE.ShaderMaterial({
-      uniforms: { time: { value: 0 } },
-      vertexShader:
-        'varying vec3 wp; void main(){wp=(modelMatrix*vec4(position,1.0)).xyz; gl_Position=projectionMatrix*viewMatrix*vec4(wp,1.0);}',
-      fragmentShader: `uniform float time; varying vec3 wp; void main(){vec2 p=wp.xz;float a=sin(p.x*.6+p.y*.26+time*.8);float b=sin(p.x*.22-p.y*.63-time*.5);float ripple=pow(max(0.,a*b),7.);float deep=clamp(length(p/vec2(113.,103.))-1.,0.,1.);vec3 col=mix(vec3(.28,.61,.62),vec3(.10,.36,.43),deep*.72);col+=ripple*.09;float gleam=pow(max(0.,sin(p.x*2.1+p.y*.8+time)*sin(p.y*2.4-time*.7)),24.);col+=gleam*.055;gl_FragColor=vec4(col,1.);}`,
+      uniforms: {
+        time: { value: 0 },
+        daylight: { value: 1 },
+        lightDirection: {
+          value: new THREE.Vector3(-0.48, 0.8, 0.36).normalize(),
+        },
+        coast: { value: COAST_RADII },
+        rippleOrigin: {
+          value: Array.from({ length: 8 }, () => new THREE.Vector2()),
+        },
+        rippleAge: { value: Array(8).fill(2) },
+      },
+      vertexShader: waterVertex,
+      fragmentShader: waterFragment,
+      transparent: true,
+      depthWrite: false,
     });
     this.water = mesh(
       this.scene,
       new THREE.PlaneGeometry(1600, 1600),
       this.waterMaterial,
       0,
-      -0.12,
+      0,
       0,
     );
     this.water.rotation.x = -Math.PI / 2;
     this.water.receiveShadow = false;
-    const sand = mesh(
-      this.scene,
-      new THREE.CylinderGeometry(1, 1, 1, 120),
-      0xd0ba8d,
-      0,
-      0.15,
-      0,
-      118,
-      2,
-      108,
-    );
-    sand.receiveShadow = true;
-    const geo = new THREE.PlaneGeometry(240, 224, 120, 112);
+    this.water.castShadow = false;
+    const geo = new THREE.PlaneGeometry(300, 280, 240, 224);
     geo.rotateX(-Math.PI / 2);
     const p = geo.attributes.position;
     const colors = [];
@@ -274,7 +278,11 @@ export class World {
       );
       if (z < -68)
         c.lerp(new THREE.Color(0xe0e5d8), Math.min(1, (-z - 68) / 25));
-      c.multiplyScalar(0.94 + rand() * 0.12);
+      c.lerp(
+        new THREE.Color(0xd3c39b),
+        1 - THREE.MathUtils.smoothstep(shoreDistance(x, z), 3, 14),
+      );
+      c.multiplyScalar(0.96 + rand() * 0.08);
       colors.push(c.r, c.g, c.b);
     }
     const indices = [];
@@ -284,7 +292,8 @@ export class World {
         geo.index.getX(i + 1),
         geo.index.getX(i + 2),
       ];
-      if (ids.every((j) => land(p.getX(j), p.getZ(j)))) indices.push(...ids);
+      if (ids.every((j) => shoreDistance(p.getX(j), p.getZ(j)) > -30))
+        indices.push(...ids);
     }
     geo.setIndex(indices);
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -373,32 +382,44 @@ export class World {
       g.computeVertexNormals();
       mesh(this.scene, g, 0xbfb48c, 0, 0, 0);
     }
-    // Long foam threads move independently of the shoreline.
-    this.foam = [];
-    for (let i = 0; i < 65; i++) {
-      const angle = rand() * Math.PI * 2,
-        r = 1.1 + rand() * 0.52;
-      const f = mesh(
-        this.scene,
-        new THREE.PlaneGeometry(2 + rand() * 5, 0.08 + rand() * 0.12),
-        new THREE.MeshBasicMaterial({
-          color: 0xc8e4db,
-          transparent: true,
-          opacity: 0.26,
-        }),
-        Math.cos(angle) * 116 * r,
-        0.005,
-        Math.sin(angle) * 108 * r,
-      );
-      f.rotation.x = -Math.PI / 2;
-      this.foam.push(f);
-    }
   }
   house(x, z, color = 0x527c83, size = 1) {
     const g = new THREE.Group();
     g.position.set(x, ground(x, z), z);
     g.scale.setScalar(size);
     this.scene.add(g);
+    const windows = new THREE.MeshStandardMaterial({
+      color: 0xb5d4cb,
+      emissive: 0xffb85b,
+      emissiveIntensity: 0,
+      roughness: 0.3,
+    });
+    const glow = mesh(
+      g,
+      new THREE.CircleGeometry(3, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xffbd70,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      }),
+      0,
+      0.04,
+      4.2,
+      1,
+      0.7,
+      1,
+    );
+    glow.rotation.x = -Math.PI / 2;
+    glow.castShadow = false;
+    this.houses.push({
+      x,
+      z,
+      size,
+      windows,
+      glow,
+      door: { x, z: z + 4.6 * size },
+    });
     cube(g, 0xdfcfac, 0, 2.0, 0, 5.8, 4, 4.9);
     cube(g, 0x877157, 0, 0.3, 0, 6.1, 0.5, 5.2);
     const roof = new THREE.CylinderGeometry(4.5, 4.5, 6.8, 3, 1);
@@ -411,7 +432,7 @@ export class World {
     ell(g, 0xe2b668, 0.4, 1.2, 2.62, 0.07, 0.07, 0.06);
     for (const xx of [-1.85, 1.85]) {
       cube(g, 0x66543f, xx, 2.35, 2.55, 1.22, 1.38, 0.15);
-      cube(g, 0xf4d59a, xx, 2.35, 2.65, 1, 1.15, 0.05);
+      cube(g, windows, xx, 2.35, 2.65, 1, 1.15, 0.05);
       cube(g, 0xf0e0be, xx, 2.35, 2.71, 0.08, 1.2, 0.06);
       cube(g, 0xf0e0be, xx, 2.35, 2.71, 1.1, 0.08, 0.06);
       cube(g, 0x82664e, xx, 1.55, 2.9, 1.5, 0.27, 0.5);
@@ -851,6 +872,171 @@ export class World {
     f.rotation.x = Math.PI / 2;
     this.fishRing = f;
   }
+  buildNightLife() {
+    this.porchLights = Array.from({ length: 4 }, () => {
+      const light = new THREE.PointLight(0xffba71, 0, 13, 2);
+      this.scene.add(light);
+      return light;
+    });
+    for (const n of NPCS) {
+      const houses = [...this.houses].sort(
+        (a, b) =>
+          Math.hypot(a.x - n.x, a.z - n.z) - Math.hypot(b.x - n.x, b.z - n.z),
+      );
+      let route, home;
+      for (const h of houses) {
+        for (const dx of [0, -2, 2]) {
+          const door = { x: h.x + dx, z: h.z + 6.5 * h.size };
+          route = this.findRoute(n, door.x, door.z, true);
+          if (route) {
+            home = h;
+            break;
+          }
+        }
+        if (route) break;
+      }
+      const points = [{ x: n.x, z: n.z }, ...(route || [])];
+      if (home) points.push({ x: home.x, z: home.z + 2.9 * home.size });
+      let total = 0;
+      const lengths = [0];
+      for (let i = 1; i < points.length; i++) {
+        total += Math.hypot(
+          points[i].x - points[i - 1].x,
+          points[i].z - points[i - 1].z,
+        );
+        lengths.push(total);
+      }
+      this.npcMeshes.get(n.id).userData.commute = {
+        points,
+        lengths,
+        total,
+        home,
+      };
+    }
+    this.pickupMaterials = [];
+    for (const group of this.pickups.values())
+      group.traverse((obj) => {
+        if (obj.isMesh && obj.material.emissive) {
+          obj.material = obj.material.clone();
+          obj.material.emissive.set(0x6b977f);
+          this.pickupMaterials.push(obj.material);
+        }
+      });
+  }
+  npcPosition(id) {
+    return this.npcMeshes.get(id)?.position;
+  }
+  updateNeighbours() {
+    const c = this.cycle;
+    for (const n of NPCS) {
+      const g = this.npcMeshes.get(n.id),
+        r = g.userData.commute;
+      const travel = Math.max(2, Math.min(40, r.total / 2.8));
+      const progress = c.night
+        ? 1
+        : c.goingHome
+          ? THREE.MathUtils.clamp((c.time - (540 - travel)) / travel, 0, 1)
+          : c.waking
+            ? 1 - THREE.MathUtils.clamp(c.time / Math.min(20, travel), 0, 1)
+            : 0;
+      const distance = progress * r.total;
+      let index = 1;
+      while (index < r.lengths.length - 1 && r.lengths[index] < distance)
+        index++;
+      const a = r.points[Math.max(0, index - 1)],
+        b = r.points[Math.min(index, r.points.length - 1)];
+      const fraction = r.total
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              (distance - (r.lengths[index - 1] || 0)) /
+                Math.max(
+                  0.001,
+                  (r.lengths[index] || 0) - (r.lengths[index - 1] || 0),
+                ),
+            ),
+          )
+        : 0;
+      const x = a.x + (b.x - a.x) * fraction,
+        z = a.z + (b.z - a.z) * fraction;
+      g.position.set(x, ground(x, z), z);
+      g.visible = !c.night;
+      const walking = (c.goingHome || c.waking) && progress > 0 && progress < 1;
+      g.userData.body.position.y = walking
+        ? Math.abs(Math.sin(this.time * 11 + n.x)) * 0.08
+        : Math.sin(this.time * 1.5 + n.x) * 0.035;
+      g.userData.body.rotation.z = walking
+        ? Math.sin(this.time * 11 + n.x) * 0.065
+        : 0;
+      g.userData.feet[0].position.z =
+        0.17 + (walking ? Math.sin(this.time * 11 + n.x) * 0.18 : 0);
+      g.userData.feet[1].position.z =
+        0.17 - (walking ? Math.sin(this.time * 11 + n.x) * 0.18 : 0);
+      if (walking)
+        g.rotation.y = Math.atan2(
+          (b.x - a.x) * (c.waking ? -1 : 1),
+          (b.z - a.z) * (c.waking ? -1 : 1),
+        );
+      else if (Math.hypot(this.state.x - x, this.state.z - z) < 7)
+        g.rotation.y = Math.atan2(this.state.x - x, this.state.z - z);
+      const entity = this.entities.find(
+        (e) => e.id === n.id && e.type === 'npc',
+      );
+      entity.x = x;
+      entity.z = z;
+    }
+  }
+  updateLight() {
+    const c = this.cycle,
+      light = c.light,
+      dark = 1 - THREE.MathUtils.smoothstep(light, 0.05, 0.65);
+    this.sun.intensity = 3.4 * light;
+    const sunAngle = ((c.hour - 6) / 12) * Math.PI;
+    this.sun.position
+      .copy(this.focus)
+      .add(
+        new THREE.Vector3(
+          -Math.cos(sunAngle) * 65,
+          Math.max(12, Math.sin(sunAngle) * 80),
+          30,
+        ),
+      );
+    this.sun.color.setRGB(1, 0.69 + light * 0.22, 0.43 + light * 0.31);
+    this.ambient.intensity = 0.32 + light * 1.98;
+    this.ambient.color.setRGB(0.42 + light * 0.42, 0.57 + light * 0.37, 1);
+    this.moon.intensity = 0.8 * (1 - light);
+    this.moon.position.copy(this.focus).add(new THREE.Vector3(30, 60, -30));
+    this.moon.target.position.copy(this.focus);
+    this.scene.background.setRGB(
+      0.07 + light * 0.44,
+      0.12 + light * 0.61,
+      0.23 + light * 0.51,
+    );
+    this.scene.fog.color.copy(this.scene.background);
+    this.renderer.toneMappingExposure = 1.16 + dark * 0.1;
+    this.waterMaterial.uniforms.daylight.value = light;
+    this.waterMaterial.uniforms.lightDirection.value
+      .copy(light > 0.15 ? this.sun.position : this.moon.position)
+      .sub(this.focus)
+      .normalize();
+    for (const h of this.houses) {
+      h.windows.emissiveIntensity = dark * 2;
+      h.glow.material.opacity = dark * 0.15;
+    }
+    const nearest = [...this.houses].sort(
+      (a, b) =>
+        Math.hypot(a.x - this.focus.x, a.z - this.focus.z) -
+        Math.hypot(b.x - this.focus.x, b.z - this.focus.z),
+    );
+    this.porchLights.forEach((l, i) => {
+      const h = nearest[i];
+      l.position.set(h.x, ground(h.x, h.z) + 2.5, h.z + 3.3 * h.size);
+      l.intensity = dark * 12;
+    });
+    for (const material of this.pickupMaterials)
+      material.emissiveIntensity = dark * 0.36;
+  }
   sync() {
     for (const [id, g] of this.pickups)
       g.visible =
@@ -879,22 +1065,25 @@ export class World {
   walk(dx, dz, dt, sprint) {
     const length = Math.hypot(dx, dz);
     if (!length) return false;
-    const speed = (sprint ? 5.5 : 3.7) * dt;
+    const speed = (sprint ? 8.3 : 5.5) * dt;
     dx = (dx / length) * speed;
     dz = (dz / length) * speed;
     const s = this.state;
+    const oldX = s.x,
+      oldZ = s.z;
     const valid = (x, z) =>
-      land(x, z) &&
+      walkable(x, z) &&
       this.colliders.every((c) => Math.hypot(c.x - x, c.z - z) > c.r + 0.48);
     if (valid(s.x + dx, s.z)) s.x += dx;
     if (valid(s.x, s.z + dz)) s.z += dz;
     this.player.rotation.y = Math.atan2(dx, dz);
-    return true;
+    return Math.hypot(s.x - oldX, s.z - oldZ) > 0.00001;
   }
   nearest() {
     let best = null,
       d = 4.2;
     for (const e of this.entities) {
+      if (e.type === 'npc' && !this.cycle.available) continue;
       if (this.state.notes.includes(e.id) || this.state.gathered.includes(e.id))
         continue;
       const n = Math.hypot(e.x - this.state.x, e.z - this.state.z);
@@ -924,13 +1113,13 @@ export class World {
     const hit = this.raycaster.intersectObject(this.terrain)[0];
     if (hit) this.routeTo(hit.point.x, hit.point.z);
   }
-  routeTo(x, z) {
+  findRoute(from, x, z, dry = false) {
     const valid = (x, z) =>
-        land(x, z) &&
+        (dry ? land(x, z) : walkable(x, z)) &&
         this.colliders.every((c) => Math.hypot(c.x - x, c.z - z) > c.r + 0.95),
       key = (x, z) => `${x},${z}`;
-    const sx = Math.round(this.state.x / 2) * 2,
-      sz = Math.round(this.state.z / 2) * 2,
+    const sx = Math.round(from.x / 2) * 2,
+      sz = Math.round(from.z / 2) * 2,
       gx = Math.round(x / 2) * 2,
       gz = Math.round(z / 2) * 2;
     if (!valid(gx, gz)) return;
@@ -978,8 +1167,13 @@ export class World {
     if (!goal) return;
     const path = [];
     for (let p = goal; p.parent; p = p.parent) path.unshift({ x: p.x, z: p.z });
+    return path;
+  }
+  routeTo(x, z) {
+    const path = this.findRoute(this.state, x, z);
+    if (!path) return;
     this.route = path;
-    this.destination = { x: gx, z: gz };
+    this.destination = { x: Math.round(x / 2) * 2, z: Math.round(z / 2) * 2 };
   }
   update(dt, keys, paused, cinematic) {
     this.time += dt;
@@ -1026,12 +1220,8 @@ export class World {
     b.right.rotation.x = -b.left.rotation.x;
     b.feet[0].position.z = 0.17 + (moving ? Math.sin(stride) * 0.19 : 0);
     b.feet[1].position.z = 0.17 - (moving ? Math.sin(stride) * 0.19 : 0);
-    for (const [id, g] of this.npcMeshes) {
-      const n = NPCS.find((n) => n.id === id);
-      g.userData.body.position.y = Math.sin(t * 1.5 + n.x) * 0.035;
-      if (Math.hypot(s.x - n.x, s.z - n.z) < 7)
-        g.rotation.y = Math.atan2(s.x - n.x, s.z - n.z);
-    }
+    this.cycle = dayCycle(s.playtime);
+    this.updateNeighbours();
     let target = new THREE.Vector3(s.x, ground(s.x, s.z) + 1, s.z),
       zoom = this.zoom,
       offset = new THREE.Vector3(28, 37, 28);
@@ -1055,7 +1245,7 @@ export class World {
     this.sun.target.position.copy(this.focus);
     const current = TRADES[s.step],
       n = current && NPCS.find((n) => n.id === current.npc);
-    this.pointer.visible = !!n && !cinematic;
+    this.pointer.visible = !!n && !cinematic && this.cycle.available;
     if (n) {
       this.pointer.position.set(
         n.x,
@@ -1072,16 +1262,20 @@ export class World {
         this.destination.z,
       );
     this.waterMaterial.uniforms.time.value = t;
-    const golden = (1 - Math.cos((s.playtime / 2400) * Math.PI * 2)) * 0.5;
-    this.sun.color.setRGB(1, 0.9 - golden * 0.13, 0.72 - golden * 0.16);
-    this.sun.intensity = 3.4 - golden * 0.5;
+    this.updateLight();
+    const depths = waterDepth(s.x, s.z);
+    this.wading = depths > 0.015;
+    const uniforms = this.waterMaterial.uniforms;
+    for (let i = 0; i < 8; i++) uniforms.rippleAge.value[i] += dt;
+    if (moving && this.wading && t - this.lastRipple > 0.27) {
+      const i = this.rippleIndex++ % 8;
+      uniforms.rippleOrigin.value[i].set(s.x, s.z);
+      uniforms.rippleAge.value[i] = 0;
+      this.lastRipple = t;
+    }
     this.boat.rotation.z = Math.sin(t * 0.8) * 0.035;
     this.boat.position.y = 0.1 + Math.sin(t) * 0.09;
     this.beamGroup.rotation.y = t * 0.18;
-    this.foam.forEach((f, i) => {
-      f.position.x += Math.sin(t * 0.5 + i) * dt * 0.08;
-      f.material.opacity = 0.13 + Math.sin(t * 0.6 + i) * 0.09;
-    });
     this.smokes.forEach((f) => {
       const a = f.userData,
         v = (t * 0.4 + a.phase) % 3;
@@ -1090,6 +1284,7 @@ export class World {
       f.material.opacity = 0.13 * (1 - v / 3);
     });
     this.birds.forEach((g, i) => {
+      g.visible = !this.cycle.night;
       const a = g.userData,
         phase = t * 0.045 + a.phase;
       g.position.set(

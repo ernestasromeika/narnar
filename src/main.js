@@ -1,5 +1,6 @@
 ﻿import './style.css';
-import { World, ground, land } from './world.js';
+import { World, ground } from './world.js';
+import { walkable, coastOutline } from './island.js';
 import {
   ITEMS,
   NPCS,
@@ -33,7 +34,7 @@ let state = saved || initialState();
 if (!saved)
   state.settings.reducedMotion =
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false;
-if (!land(state.x, state.z)) {
+if (!walkable(state.x, state.z)) {
   state.x = -33;
   state.z = 62;
 }
@@ -54,7 +55,10 @@ let toastTimer,
   hudTimer = 0,
   last = performance.now(),
   currentRegion = '',
-  nearest = null;
+  nearest = null,
+  lastDreamDay = -1,
+  dreamUntil = 0,
+  lastAvailability = true;
 const portrait = (color = '#d1614e') =>
   `<svg viewBox="0 0 90 90" aria-hidden="true"><circle cx="45" cy="45" r="44" fill="${color}" opacity=".2"/><ellipse cx="45" cy="55" rx="25" ry="34" fill="#2e4248"/><ellipse cx="45" cy="62" rx="18" ry="22" fill="#f6efdd"/><ellipse cx="35" cy="38" rx="10" ry="13" fill="#f6efdd"/><ellipse cx="55" cy="38" rx="10" ry="13" fill="#f6efdd"/><circle cx="36" cy="38" r="3" fill="#23393e"/><circle cx="54" cy="38" r="3" fill="#23393e"/><path d="m39 45 12 0-6 8z" fill="#e2a058"/><path d="M22 58q23 9 46 0" stroke="${color}" stroke-width="8" fill="none"/><path d="m59 60 1 18" stroke="${color}" stroke-width="8"/></svg>`;
 $('#app').innerHTML = `
@@ -67,6 +71,7 @@ $('#app').innerHTML = `
 <div class="controls hud"><span><kbd>W A S D</kbd> wander</span><span><kbd>SHIFT</kbd> run</span><span><kbd>E</kbd> interact</span><small>or click the ground to waddle</small></div>
 <button class="minimap hud" id="minimap-btn" aria-label="Open full island map"><canvas id="minimap" width="168" height="148"></canvas><span>NORTHLIGHT ISLE <span>↗</span></span></button>
 <div class="touch-controls hud"><div class="dpad"><button data-key="w" aria-label="Walk up">↑</button><button data-key="a" aria-label="Walk left">←</button><button data-key="s" aria-label="Walk down">↓</button><button data-key="d" aria-label="Walk right">→</button></div><button data-key="shift">Run</button><button id="touch-action">Interact</button></div>
+<div id="thought-bubble" class="thought-bubble hidden" role="status" aria-live="polite"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="start-screen" class="start-screen"><div class="start-card"><div class="start-kicker"><i></i> A COSY ISLAND ADVENTURE</div><h1>NarNar<span>✦</span></h1><p class="start-tagline">A little trade.<br>A place to call home.</p><div class="start-rule"></div><p class="start-description">You have a pomegranate, six little pockets,<br>and a wonderfully unreasonable dream.</p><button id="begin-btn" class="primary">${saved?.started ? 'Continue your adventure' : 'Let’s find our home'} <span>→</span></button><button id="start-options" class="start-options">Sound, saves & controls</button><div class="start-meta">Single player <i>·</i> A leisurely 30–60 minute journey</div></div><div class="start-caption"><span>01 / NORTHLIGHT ISLE</span><p>Good things begin small.</p></div></div>
 <div id="cinematic" class="cinematic hidden"><div class="cinema-top"><span id="scene-label"></span><button id="skip-scene">Skip scene <kbd>ESC</kbd></button></div><div class="cinema-bottom"><div id="scene-dots"></div><h2 id="scene-text"></h2><button id="next-shot">Continue →</button></div></div>
@@ -250,11 +255,19 @@ function hint() {
     text = `Look for ${nameOf(id)} in the ${id === 'wood' ? 'southern shore' : id === 'herbs' ? 'western orchard' : 'eastern forest'}. Your compass points to a marked patch.`;
   } else {
     tracked = NPCS.find((n) => n.id === t.npc);
-    text = `${tracked.name} is waiting. Follow the compass, or open your map. Keep every required item in your pockets.`;
+    text = world.cycle.available
+      ? `${tracked.name} is waiting. Follow the compass, or open your map. Keep every required item in your pockets.`
+      : `${tracked.name} will trade again in the morning. Night lasts three minutes; you can still gather, fish, play chimes, and find postcards.`;
   }
   toast(text);
 }
 function talk(n) {
+  if (!world.cycle.available) {
+    toast(
+      `${n.name} ${world.cycle.night ? 'is sleeping' : 'is heading home or waking up'}. There is still plenty to gather outside.`,
+    );
+    return;
+  }
   if (!state.met.includes(n.id)) state.met.push(n.id);
   persist();
   const t = currentTrade(),
@@ -307,6 +320,10 @@ function talk(n) {
   actionRow(actions);
 }
 function makeTrade(t) {
+  if (!world.cycle.available) {
+    toast('Your neighbours will trade again in the morning.');
+    return;
+  }
   const result = completeTrade(state, t);
   if (!result.ok) {
     sound.fail();
@@ -606,6 +623,16 @@ function mapView() {
     `<div class="eyebrow">SOMEWHERE GOOD TO GET LOST</div><h2>Northlight Isle</h2><p class="muted map-help">Choose a neighbour to point your compass their way. The gold dot is your next trade.</p><div class="map-layout"><div id="large-map"></div><div class="map-neighbours" id="map-neighbours"></div></div><div class="map-legend"><span>● You</span><span>◆ Next trade</span><span>♫ Wind chimes</span><span>✉ Postcards</span></div>`,
     true,
   );
+  const people = NPCS.map((n) => ({
+    ...n,
+    x: world.npcPosition(n.id).x,
+    z: world.npcPosition(n.id).z,
+    role: world.cycle.night ? 'Sleeping until morning' : n.role,
+  }));
+  const outline = (inset) =>
+    coastOutline(inset)
+      .map((p) => `${p.x + 125},${p.z + 112}`)
+      .join(' ');
   const x = (v) => v + 125,
     z = (v) => v + 112,
     t = currentTrade();
@@ -616,19 +643,19 @@ function mapView() {
     )
     .join('');
   $('#large-map').innerHTML =
-    `<svg class="island-map" viewBox="0 0 250 225" role="img" aria-label="Map of Northlight Isle. You are shown in red. The next trade is gold."><rect width="250" height="225" fill="#86b5b4"/><ellipse cx="125" cy="112" rx="117" ry="105" fill="#d3c7a5"/><ellipse cx="125" cy="112" rx="111" ry="100" fill="#9fae86"/>${paths}${DISTRICTS.map((d) => `<text x="${x(d.x)}" y="${z(d.z) - 10}" text-anchor="middle" class="map-region">${d.short.toUpperCase()}</text>`).join('')}${NOTES.filter(
+    `<svg class="island-map" viewBox="-15 -15 280 255" role="img" aria-label="Map of Northlight Isle. You are shown in red. The next trade is gold."><rect x="-15" y="-15" width="280" height="255" fill="#86b5b4"/><polygon points="${outline(0)}" fill="#d3c7a5"/><polygon points="${outline(9)}" fill="#9fae86"/>${paths}${DISTRICTS.map((d) => `<text x="${x(d.x)}" y="${z(d.z) - 10}" text-anchor="middle" class="map-region">${d.short.toUpperCase()}</text>`).join('')}${NOTES.filter(
       (n) => !state.notes.includes(n.id),
     )
       .map((n) => `<text x="${x(n.x)}" y="${z(n.z)}" class="map-note">✉</text>`)
       .join(
         '',
-      )}${CHIMES.map((c) => `<text x="${x(c.x)}" y="${z(c.z)}" class="map-chime">♫</text>`).join('')}${NPCS.map((n) => `<g data-npc="${n.id}" role="button" tabindex="0" aria-label="Track ${n.name}"><circle cx="${x(n.x)}" cy="${z(n.z)}" r="${n.id === t?.npc ? 3.4 : 2.3}" fill="${n.id === t?.npc ? '#f9d078' : '#426467'}" stroke="#f1e4bd" stroke-width=".8"/><title>${n.name} — ${n.role}</title></g>`).join('')}<circle cx="${x(state.x)}" cy="${z(state.z)}" r="3" fill="#b84e40" stroke="white" stroke-width="1"/><text x="225" y="20" class="map-north">N ↑</text></svg>`;
+      )}${CHIMES.map((c) => `<text x="${x(c.x)}" y="${z(c.z)}" class="map-chime">♫</text>`).join('')}${people.map((n) => `<g data-npc="${n.id}" role="button" tabindex="0" aria-label="Track ${n.name}"><circle cx="${x(n.x)}" cy="${z(n.z)}" r="${n.id === t?.npc ? 3.4 : 2.3}" fill="${n.id === t?.npc ? '#f9d078' : '#426467'}" stroke="#f1e4bd" stroke-width=".8"/><title>${n.name} — ${n.role}</title></g>`).join('')}<circle cx="${x(state.x)}" cy="${z(state.z)}" r="3" fill="#b84e40" stroke="white" stroke-width="1"/><text x="225" y="20" class="map-north">N ↑</text></svg>`;
   const track = (n) => {
     tracked = n;
     closeModal();
     toast(`Your compass now points to ${n.name}.`);
   };
-  NPCS.forEach((n) => {
+  people.forEach((n) => {
     const b = button(
       '',
       () => track(n),
@@ -695,6 +722,8 @@ function settings() {
           world.state = state;
           sound.settings = state.settings;
           tracked = null;
+          lastDreamDay = -1;
+          dreamUntil = 0;
           world.sync();
           closeModal();
           begin();
@@ -735,13 +764,15 @@ $('#import-file').onchange = async (e) => {
         'Load this adventure',
         () => {
           state = s;
-          if (!land(state.x, state.z)) {
+          if (!walkable(state.x, state.z)) {
             state.x = -33;
             state.z = 62;
           }
           world.state = state;
           sound.settings = state.settings;
           tracked = null;
+          lastDreamDay = -1;
+          dreamUntil = 0;
           closeModal();
           begin();
           sound.apply();
@@ -875,13 +906,19 @@ function minimap() {
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = '#d9cbab';
   ctx.beginPath();
-  ctx.ellipse(w / 2, h / 2, 67, 64, 0, 0, Math.PI * 2);
+  coastOutline(0).forEach((p, i) =>
+    ctx[i ? 'lineTo' : 'moveTo'](w / 2 + p.x * 0.5, h / 2 + p.z * 0.5),
+  );
+  ctx.closePath();
   ctx.fill();
   ctx.fillStyle = '#a5b28c';
   ctx.beginPath();
-  ctx.ellipse(w / 2, h / 2, 63, 59, 0, 0, Math.PI * 2);
+  coastOutline(9).forEach((p, i) =>
+    ctx[i ? 'lineTo' : 'moveTo'](w / 2 + p.x * 0.5, h / 2 + p.z * 0.5),
+  );
+  ctx.closePath();
   ctx.fill();
-  const pos = (x, z) => [w / 2 + x * 0.55, h / 2 + z * 0.55];
+  const pos = (x, z) => [w / 2 + x * 0.5, h / 2 + z * 0.5];
   ctx.strokeStyle = '#d4c7a0';
   ctx.lineWidth = 2;
   for (const p of world.paths) {
@@ -891,9 +928,13 @@ function minimap() {
   }
   for (const n of NPCS) {
     ctx.beginPath();
-    ctx.fillStyle = n.id === currentTrade()?.npc ? '#f8d38a' : '#55736b';
+    ctx.fillStyle = world.cycle.night
+      ? '#989782'
+      : n.id === currentTrade()?.npc
+        ? '#f8d38a'
+        : '#55736b';
     ctx.arc(
-      ...pos(n.x, n.z),
+      ...pos(world.npcPosition(n.id).x, world.npcPosition(n.id).z),
       n.id === currentTrade()?.npc ? 3.4 : 1.7,
       0,
       Math.PI * 2,
@@ -922,22 +963,27 @@ function updateHud() {
     currentRegion = region.name;
     $('#region').textContent = region.name;
   }
-  $('#time-of-day').textContent = [
-    'Morning light',
-    'A little afternoon',
-    'Golden hour',
-    'An evening to remember',
-  ][Math.floor(state.playtime / 600) % 4];
+  const cycle = world.cycle;
+  $('#time-of-day').textContent = `${cycle.label} · ${cycle.clock}`;
+  if (lastAvailability !== cycle.available) {
+    lastAvailability = cycle.available;
+    renderQuest();
+  }
+  if (!cycle.available && !state.retired)
+    $('#quest-detail').textContent = cycle.night
+      ? 'Neighbours are sleeping. Gather, fish, and explore until morning.'
+      : 'Neighbours are heading home or waking up. Take a little wander.';
   const n = tracked || NPCS.find((n) => n.id === currentTrade()?.npc);
   $('#compass').classList.toggle('hidden', !n || !started);
   if (n) {
-    const dx = n.x - state.x,
-      dz = n.z - state.z,
+    const target = world.npcMeshes.has(n.id) ? world.npcPosition(n.id) : n;
+    const dx = target.x - state.x,
+      dz = target.z - state.z,
       angle =
         (Math.atan2((dx + dz) * 0.707, (dx - dz) * 0.707) * 180) / Math.PI;
     $('#direction').style.transform = `rotate(${angle}deg)`;
     $('#destination-label').innerHTML =
-      `${n.name || nameOf(n.type)}<small>${Math.round(Math.hypot(dx, dz))} steps away</small>`;
+      `${n.name || nameOf(n.type)}<small>${world.npcMeshes.has(n.id) && cycle.night ? 'Sleeping until morning' : Math.round(Math.hypot(dx, dz)) + ' steps away'}</small>`;
   }
   nearest = !scene && !$('#dialog').open && started ? world.nearest() : null;
   $('#nearby').classList.toggle('hidden', !nearest);
@@ -960,6 +1006,24 @@ function updateHud() {
             : 'Pick up';
   }
   minimap();
+}
+function updateThought(paused) {
+  const bubble = $('#thought-bubble'),
+    cycle = world.cycle;
+  if (!paused && cycle.night && lastDreamDay !== cycle.day) {
+    lastDreamDay = cycle.day;
+    dreamUntil = world.time + 11;
+    bubble.textContent = state.retired
+      ? 'A warm window of my own. I still can’t quite believe it.'
+      : 'One day, I’ll have a little home too… with a warm window waiting for me.';
+  }
+  const visible = !paused && cycle.night && world.time < dreamUntil;
+  bubble.classList.toggle('hidden', !visible);
+  if (visible) {
+    const p = world.project(state.x, ground(state.x, state.z) + 4.1, state.z);
+    bubble.style.left = `${Math.max(140, Math.min(innerWidth - 140, p.x))}px`;
+    bubble.style.top = `${p.y}px`;
+  }
 }
 function frame(now) {
   requestAnimationFrame(frame);
@@ -1001,7 +1065,8 @@ function frame(now) {
   } else if (!started) cine = { x: -25, z: 44, y: 2, zoom: 21, angle: 0.78 };
   const paused = !started || !!scene || $('#dialog').open;
   const moving = world.update(dt, keys, paused, cine);
-  if (moving) sound.footstep();
+  if (moving) sound.footstep(world.wading, keys.has('shift'));
+  updateThought(paused);
   if (started && !paused) state.playtime += dt;
   if (fishGame) {
     fishGame.time += dt;

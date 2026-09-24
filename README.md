@@ -10,6 +10,8 @@ A single-player, cozy 2.5D trading adventure on Northlight Isle. You are a small
 
 - An open island with six districts, 20 neighbours, and 28 story trades across five chapters.
 - An orthographic 3D world with soft shadows, rounded characters, coastal water, swaying boats, seabirds, orchards, timber houses, and a working lighthouse.
+- A scalloped coastline with coves and headlands, sloping beaches, translucent shallows, moving foam, sun/moon reflections, and footstep ripples. NarNar can wade knee-deep with gentle splash sounds; deep water stays out of bounds.
+- A 12-minute morning/day/evening/night cycle, including a three-minute night. Neighbours walk home at dusk, sleep inside lit cottages, and return in the morning. Gathering, postcards, fishing, and chimes remain available after dark. A thought bubble follows NarNar when dreaming of a home.
 - Six inventory slots, stackable gathering items, and a travel trunk that prevents inventory dead ends.
 - Fishing, foraging, a three-part wind-chime melody, 12 collectible postcards, and an optional sea-glass scarf quest.
 - Four animated, skippable in-engine story sequences: arrival, first trade, lighthouse restoration, and retirement.
@@ -35,6 +37,8 @@ A single-player, cozy 2.5D trading adventure on Northlight Isle. You are a small
 
 The game has no combat, death, energy meter, ads, accounts, or purchases. Your neighbours will wait. You can keep exploring after retirement.
 
+Walking is 5.5 world units/second (the original running speed); holding Shift runs at 8.3. The clock advances during active exploration and pauses in conversations, menus, and story scenes. Existing saves remain compatible, including saves made while wading.
+
 ## Saves
 
 Progress is stored in `localStorage` under `narnar-save-v1` every 15 seconds and after meaningful actions. It belongs to this browser and site origin. Download a backup in **Pause → Download save** to move devices or protect against clearing browser data. Imported files are validated before replacing progress, and the game asks before replacement. No save data is sent to a server.
@@ -57,6 +61,8 @@ Production is a static Vite build in `dist/`. GitHub Actions builds and deploys 
 - `src/content.js`: neighbours, story exchanges, items, collectibles, and landmarks.
 - `src/state.js`: inventory transactions and save validation.
 - `src/world.js`: geometry, lighting, animation, collision, and click-to-move routing.
+- `src/island.js`: shared coastline, terrain height, wading limits, and day/night schedule.
+- `src/water.js`: shoreline foam, animated water, reflections, and footstep ripple shaders.
 - `src/main.js`: interface, controls, interactions, journal, save files, and scene flow.
 - `src/audio.js`: synthesized ambience, music, and effects.
 - `src/scenes.js`: cinematic shots and narration.

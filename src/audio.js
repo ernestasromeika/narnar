@@ -36,6 +36,15 @@ export class Soundscape {
       filter.frequency.value = 620;
       source.connect(filter).connect(this.ambience);
       source.start();
+      this.splashBuffer = this.ctx.createBuffer(
+        1,
+        Math.floor(this.ctx.sampleRate * 0.32),
+        this.ctx.sampleRate,
+      );
+      const splash = this.splashBuffer.getChannelData(0);
+      for (let i = 0; i < splash.length; i++)
+        splash[i] =
+          (Math.random() * 2 - 1) * (0.65 + 0.35 * Math.sin(i * 0.016));
       this.nextMusic = this.ctx.currentTime + 0.5;
     }
     await this.ctx.resume();
@@ -86,9 +95,33 @@ export class Soundscape {
       'sine',
     );
   }
-  footstep() {
-    if (!this.ctx || this.ctx.currentTime - this.lastStep < 0.3) return;
+  footstep(wading = false, sprint = false) {
+    if (
+      !this.ctx ||
+      !this.settings.sound ||
+      this.ctx.currentTime - this.lastStep < (sprint ? 0.23 : 0.3)
+    )
+      return;
     this.lastStep = this.ctx.currentTime;
+    if (wading) {
+      const now = this.ctx.currentTime,
+        source = this.ctx.createBufferSource(),
+        filter = this.ctx.createBiquadFilter(),
+        gain = this.ctx.createGain();
+      source.buffer = this.splashBuffer;
+      filter.type = 'bandpass';
+      filter.Q.value = 0.6;
+      filter.frequency.setValueAtTime(1400 + Math.random() * 400, now);
+      filter.frequency.exponentialRampToValueAtTime(420, now + 0.28);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.085, now + 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+      source.connect(filter).connect(gain).connect(this.master);
+      source.start(now);
+      source.stop(now + 0.32);
+      this.tone(450 + Math.random() * 170, 0.13, 0.012);
+      return;
+    }
     this.tone(100 + Math.random() * 30, 0.055, 0.025, 'triangle');
   }
   update() {

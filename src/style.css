@@ -1846,3 +1846,63 @@ p {
     font-size: 10px;
   }
 }
+.thought-bubble {
+  position: fixed;
+  z-index: 5;
+  transform: translate(-50%, -100%);
+  width: 260px;
+  max-width: calc(100vw - 30px);
+  padding: 15px 19px;
+  background: #faf1dddf;
+  border: 1px solid #fff9;
+  border-radius: 19px;
+  color: #36515b;
+  box-shadow: 0 5px 22px #101d3540;
+  font: italic 14px/1.7 var(--serif);
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(5px);
+}
+.thought-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -11px;
+  left: 53%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f3ecda;
+}
+.thought-bubble::before {
+  content: '';
+  position: absolute;
+  bottom: -19px;
+  left: 51%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f3ecda;
+}
+@media (max-width: 760px) {
+  .thought-bubble {
+    width: 220px;
+    font-size: 12px;
+    padding: 12px 15px;
+  }
+  .location {
+    display: block;
+    top: 43px;
+    min-width: 0;
+    padding: 5px 12px;
+    background: #f3eddfdb;
+  }
+  .location #region,
+  .location-dot {
+    display: none;
+  }
+  .location small {
+    white-space: nowrap;
+    margin: 0;
+    font-size: 11px;
+  }
+}

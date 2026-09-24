@@ -31,8 +31,8 @@ export function validSave(s) {
   if (
     !Number.isFinite(s.x) ||
     !Number.isFinite(s.z) ||
-    Math.abs(s.x) > 130 ||
-    Math.abs(s.z) > 115 ||
+    Math.abs(s.x) > 150 ||
+    Math.abs(s.z) > 140 ||
     !Number.isFinite(s.playtime) ||
     s.playtime < 0
   )
