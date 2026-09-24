@@ -1909,3 +1909,103 @@ p {
     font-size: 11px;
   }
 }
+@media (max-width: 760px), (pointer: coarse) {
+  .brand small {
+    display: none;
+  }
+  .location {
+    display: block;
+    top: 43px;
+    left: 0;
+    transform: none;
+    min-width: 0;
+    padding: 0;
+    text-align: left;
+  }
+  .location #region {
+    display: none;
+  }
+  .location small {
+    margin: 0;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .quest {
+    top: 84px;
+    width: min(175px, 46vw);
+    padding: 10px 12px;
+  }
+  .quest .eyebrow {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+  .quest h2 {
+    font-size: 15px;
+    line-height: 1.3;
+    margin: 5px 0;
+  }
+  .quest p {
+    font-size: 12px;
+    line-height: 1.35;
+    margin: 4px 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .quest .text-button {
+    font-size: 12px;
+    padding: 5px 0;
+    margin-top: 0;
+  }
+  .quest-progress {
+    margin-top: 5px;
+  }
+  .compass {
+    max-width: min(145px, 40vw);
+  }
+}
+@media (pointer: coarse) {
+  dialog {
+    margin-bottom: 154px;
+    max-height: calc(100dvh - 174px);
+  }
+  #run-btn {
+    min-width: 78px;
+    padding-inline: 9px;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(
+      to right,
+      #dcc28e var(--run-fill, 0%),
+      #f1eadbe6 var(--run-fill, 0%)
+    );
+  }
+  #run-btn:disabled {
+    opacity: 1;
+  }
+}
+@media (pointer: coarse) and (min-width: 761px) and (min-height: 531px) {
+  dialog {
+    margin-bottom: 184px;
+    max-height: calc(100dvh - 204px);
+  }
+  .touch-controls {
+    bottom: 184px;
+  }
+}
+@media (max-height: 530px) and (pointer: coarse) {
+  dialog {
+    margin-bottom: 110px;
+    max-height: calc(100dvh - 130px);
+  }
+  .location {
+    top: 32px;
+  }
+  .quest {
+    top: 70px;
+    padding: 8px 10px;
+  }
+  .quest p {
+    display: none;
+  }
+}

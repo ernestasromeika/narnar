@@ -24,7 +24,7 @@ A single-player, cozy 2.5D trading adventure on Northlight Isle. You are a small
 | Action                            | Control                                               |
 | --------------------------------- | ----------------------------------------------------- |
 | Walk                              | WASD / arrows / touch arrows                          |
-| Run                               | Hold Shift / touch Run                                |
+| Run                               | Hold Shift / tap Run for a 20-second mobile boost     |
 | Click to move                     | Click the ground; the penguin routes around obstacles |
 | Talk, collect, fish, play a chime | E / Interact                                          |
 | Map                               | M                                                     |

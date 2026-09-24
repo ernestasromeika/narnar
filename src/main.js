@@ -58,7 +58,9 @@ let toastTimer,
   nearest = null,
   lastDreamDay = -1,
   dreamUntil = 0,
-  lastAvailability = true;
+  lastAvailability = true,
+  runEndsAt = 0,
+  runSecondsShown = 0;
 const portrait = (color = '#d1614e') =>
   `<svg viewBox="0 0 90 90" aria-hidden="true"><circle cx="45" cy="45" r="44" fill="${color}" opacity=".2"/><ellipse cx="45" cy="55" rx="25" ry="34" fill="#2e4248"/><ellipse cx="45" cy="62" rx="18" ry="22" fill="#f6efdd"/><ellipse cx="35" cy="38" rx="10" ry="13" fill="#f6efdd"/><ellipse cx="55" cy="38" rx="10" ry="13" fill="#f6efdd"/><circle cx="36" cy="38" r="3" fill="#23393e"/><circle cx="54" cy="38" r="3" fill="#23393e"/><path d="m39 45 12 0-6 8z" fill="#e2a058"/><path d="M22 58q23 9 46 0" stroke="${color}" stroke-width="8" fill="none"/><path d="m59 60 1 18" stroke="${color}" stroke-width="8"/></svg>`;
 $('#app').innerHTML = `
@@ -70,7 +72,7 @@ $('#app').innerHTML = `
 <footer id="pockets" class="pockets"><div class="pocket-heading"><span>YOUR LITTLE POCKETS</span><span id="pocket-count">1 / 6</span></div><div id="inventory" class="inventory"></div><div class="pocket-footer"><span id="save-status">Progress saves automatically</span><span>✦ <span id="trade-count">0</span> trades</span></div></footer>
 <div class="controls hud"><span><kbd>W A S D</kbd> wander</span><span><kbd>SHIFT</kbd> run</span><span><kbd>E</kbd> interact</span><small>or click the ground to waddle</small></div>
 <button class="minimap hud" id="minimap-btn" aria-label="Open full island map"><canvas id="minimap" width="168" height="148"></canvas><span>NORTHLIGHT ISLE <span>↗</span></span></button>
-<div class="touch-controls hud"><div class="dpad"><button data-key="w" aria-label="Walk up">↑</button><button data-key="a" aria-label="Walk left">←</button><button data-key="s" aria-label="Walk down">↓</button><button data-key="d" aria-label="Walk right">→</button></div><button data-key="shift">Run</button><button id="touch-action">Interact</button></div>
+<div class="touch-controls hud"><div class="dpad"><button data-key="w" aria-label="Walk up">↑</button><button data-key="a" aria-label="Walk left">←</button><button data-key="s" aria-label="Walk down">↓</button><button data-key="d" aria-label="Walk right">→</button></div><button id="run-btn" aria-label="Run for 20 seconds" aria-pressed="false">Run</button><button id="touch-action">Interact</button></div>
 <div id="thought-bubble" class="thought-bubble hidden" role="status" aria-live="polite"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="start-screen" class="start-screen"><div class="start-card"><div class="start-kicker"><i></i> A COSY ISLAND ADVENTURE</div><h1>NarNar<span>✦</span></h1><p class="start-tagline">A little journey to a place to call home.</p><div class="start-rule"></div><p class="start-description">You have a pomegranate, six little pockets,<br>and a wonderfully unreasonable dream.</p><button id="begin-btn" class="primary">${saved?.started ? 'Continue your adventure' : 'Let’s find our home'} <span>→</span></button><button id="start-options" class="start-options">Sound, saves & controls</button><div class="start-meta">Single player <i>·</i> A leisurely 30–60 minute journey</div></div><div class="start-caption"><span>01 / NORTHLIGHT ISLE</span><p>Good things begin small.</p></div></div>
@@ -932,6 +934,32 @@ for (const b of document.querySelectorAll('[data-key]')) {
   };
   b.onpointerup = b.onpointercancel = () => keys.delete(b.dataset.key);
 }
+$('#run-btn').onclick = () => {
+  if (!started || scene || $('#dialog').open || performance.now() < runEndsAt)
+    return;
+  runEndsAt = performance.now() + 20000;
+  updateRun(performance.now());
+};
+function updateRun(now) {
+  const remaining = Math.max(0, (runEndsAt - now) / 1000),
+    seconds = Math.ceil(remaining),
+    active = remaining > 0,
+    b = $('#run-btn');
+  if (active) keys.add('touch-run');
+  else keys.delete('touch-run');
+  if (active || runSecondsShown)
+    b.style.setProperty('--run-fill', `${remaining * 5}%`);
+  if (seconds !== runSecondsShown) {
+    runSecondsShown = seconds;
+    b.disabled = active;
+    b.setAttribute('aria-pressed', String(active));
+    b.setAttribute(
+      'aria-label',
+      active ? `Running: ${seconds} seconds remaining` : 'Run for 20 seconds',
+    );
+    b.textContent = active ? `Run ${seconds}s` : 'Run';
+  }
+}
 let terrainMap;
 function mapTerrain() {
   if (terrainMap) return terrainMap;
@@ -1113,8 +1141,10 @@ function frame(now) {
     }
   } else if (!started) cine = { x: -25, z: 44, y: 2, zoom: 21, angle: 0.78 };
   const paused = !started || !!scene || $('#dialog').open;
+  updateRun(now);
   const moving = world.update(dt, keys, paused, cine);
-  if (moving) sound.footstep(world.wading, keys.has('shift'));
+  if (moving)
+    sound.footstep(world.wading, keys.has('shift') || keys.has('touch-run'));
   updateThought(paused);
   if (started && !paused) state.playtime += dt;
   if (fishGame) {

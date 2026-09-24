@@ -1206,12 +1206,18 @@ export class World {
           dx = dz = 0;
         }
       }
-      moving = this.walk(dx, dz, dt, keys.has('shift'));
+      moving = this.walk(
+        dx,
+        dz,
+        dt,
+        keys.has('shift') || keys.has('touch-run'),
+      );
       if (moving) this.moveTime += dt;
     }
     this.player.position.set(s.x, ground(s.x, s.z), s.z);
     const b = this.player.userData;
-    const stride = this.moveTime * (keys.has('shift') ? 13 : 10);
+    const stride =
+      this.moveTime * (keys.has('shift') || keys.has('touch-run') ? 13 : 10);
     b.body.position.y = moving
       ? Math.abs(Math.sin(stride)) * 0.095
       : Math.sin(t * 2) * 0.028;
